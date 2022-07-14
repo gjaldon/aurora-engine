@@ -45,9 +45,10 @@ pub fn log_utf8(bytes: &[u8]) {
 #[cfg(feature = "contract")]
 pub fn sha256(input: &[u8]) -> H256 {
     unsafe {
+        const REGISTER_ID: u64 = 1;
         exports::sha256(input.len() as u64, input.as_ptr() as u64, 1);
         let bytes = H256::zero();
-        exports::read_register(1, bytes.0.as_ptr() as *const u64 as u64);
+        exports::read_register(REGISTER_ID, bytes.0.as_ptr() as *const u64 as u64);
         bytes
     }
 }
@@ -73,24 +74,19 @@ pub fn ripemd160(input: &[u8]) -> [u8; 20] {
 }
 
 #[cfg(feature = "contract")]
-pub fn alt_bn128_g1_sum(g: (U256, U256), h: (U256, U256)) -> [u8; 64] {
-    const REGISTER_ID: u64 = 1;
-    let mut bytes = Vec::with_capacity(65 * 2);
+pub fn alt_bn128_g1_sum(left: [u8; 64], right: [u8; 64]) -> [u8; 64] {
+    let mut bytes = Vec::with_capacity(64 * 2 + 2); // 64 bytes per G1 + 2 positive integer bytes.
 
     bytes.push(0); // positive sign
-    bytes.extend_from_slice(&[0; 64]);
-    g.0.to_little_endian(&mut bytes[1..33]);
-    g.1.to_little_endian(&mut bytes[33..65]);
-
+    bytes.extend_from_slice(&left);
     bytes.push(0);
-    bytes.extend_from_slice(&[0; 64]);
-    h.0.to_little_endian(&mut bytes[66..98]);
-    h.1.to_little_endian(&mut bytes[98..130]);
+    bytes.extend_from_slice(&right);
 
     let value_ptr = bytes.as_ptr() as u64;
     let value_len = bytes.len() as u64;
 
     unsafe {
+        const REGISTER_ID: u64 = 1;
         exports::alt_bn128_g1_sum(value_len, value_ptr, REGISTER_ID);
         let mut output = [0u8; 64];
         exports::read_register(REGISTER_ID, output.as_ptr() as u64);
@@ -103,18 +99,16 @@ pub fn alt_bn128_g1_sum(g: (U256, U256), h: (U256, U256)) -> [u8; 64] {
 }
 
 #[cfg(feature = "contract")]
-pub fn alt_bn128_g1_scalar_multiple(g: (U256, U256), k: U256) -> [u8; 64] {
-    const REGISTER_ID: u64 = 1;
+pub fn alt_bn128_g1_scalar_multiple(g1: [u8; 64], fr: [u8; 32]) -> [u8; 64] {
     let mut bytes = [0u8; 96];
-
-    g.0.to_little_endian(&mut bytes[0..32]);
-    g.1.to_little_endian(&mut bytes[32..64]);
-    k.to_little_endian(&mut bytes[64..96]);
+    bytes[0..64].copy_from_slice(&g1);
+    bytes[64..96].copy_from_slice(&fr);
 
     let value_ptr = bytes.as_ptr() as u64;
     let value_len = bytes.len() as u64;
 
     unsafe {
+        const REGISTER_ID: u64 = 1;
         exports::alt_bn128_g1_multiexp(value_len, value_ptr, REGISTER_ID);
         let mut output = [0u8; 64];
         exports::read_register(REGISTER_ID, output.as_ptr() as u64);
@@ -129,19 +123,14 @@ pub fn alt_bn128_g1_scalar_multiple(g: (U256, U256), k: U256) -> [u8; 64] {
 #[cfg(feature = "contract")]
 pub fn alt_bn128_pairing<I>(pairs: I) -> bool
 where
-    I: ExactSizeIterator<Item = ((U256, U256), ((U256, U256), (U256, U256)))>,
+    I: ExactSizeIterator<Item = ([u8; 64], [u8; 128])>,
 {
     let n = pairs.len();
     let mut bytes = Vec::with_capacity(n * 6 * 32);
-    let mut buf = [0u8; 6 * 32];
-
-    for ((x, y), ((xre, xim), (yre, yim))) in pairs {
-        x.to_little_endian(&mut buf[0..32]);
-        y.to_little_endian(&mut buf[32..64]);
-        xre.to_little_endian(&mut buf[64..96]);
-        xim.to_little_endian(&mut buf[96..128]);
-        yre.to_little_endian(&mut buf[128..160]);
-        yim.to_little_endian(&mut buf[160..192]);
+    let mut buf = [0u8; 64 + 128];
+    for (g1, g2) in pairs {
+        buf[0..64].copy_from_slice(&g1);
+        buf[64..192].copy_from_slice(&g2);
         bytes.extend_from_slice(&buf);
     }
 

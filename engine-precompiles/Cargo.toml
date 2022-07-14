@@ -17,7 +17,7 @@ aurora-engine-types = { path = "../engine-types", default-features = false }
 aurora-engine-sdk = { path = "../engine-sdk", default-features = false }
 base64 = { version = "0.13.0", default-features = false, features = ["alloc"] }
 borsh = { version = "0.8.2", default-features = false }
-bn = { package = "aurora-bn", git = "https://github.com/birchmd/aurora-bn.git", rev = "0ae7099d379e53d36f1883cf0d840edf67f71e7d", default-features = false }
+bn = { package = "zeropool-bn" }
 evm = { git = "https://github.com/aurora-is-near/sputnikvm.git", rev = "37448b6cacd98b06282cff5a559684505c29bd2b", default-features = false }
 evm-core = { git = "https://github.com/aurora-is-near/sputnikvm.git", rev = "37448b6cacd98b06282cff5a559684505c29bd2b", default-features = false }
 libsecp256k1 = { version = "0.7.0", default-features = false, features = ["static-context", "hmac"] }
@@ -35,6 +35,7 @@ serde_json = "1"
 rand = "0.7.3"
 
 [features]
+default = ["std"]
 std = ["aurora-engine-types/std", "aurora-engine-sdk/std", "borsh/std", "bn/std", "evm/std", "evm-core/std", "libsecp256k1/std", "ripemd160/std", "sha2/std", "sha3/std", "ethabi/std"]
 contract = []
 log = []

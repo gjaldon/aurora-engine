@@ -42,21 +42,144 @@ mod consts {
 
     /// Pair element length.
     pub(super) const PAIR_ELEMENT_LEN: usize = 192;
+
+    pub(super) const SCALAR_PART_LEN: usize = SCALAR_LEN / 2;
+
+    /// Size of BN scalars.
+    pub(super) const SCALAR_LEN: usize = 32;
+
+    /// Half the size of a point size.
+    pub(super) const POINT_PART_LEN: usize = POINT_LEN / 2;
+
+    /// Size of BN points.
+    pub(super) const POINT_LEN: usize = 64;
+
+    /// Size of BN pairs.
+    pub(super) const POINT_PAIR_LEN: usize = 128;
+
+    /// Output length.
+    pub(super) const OUTPUT_LEN: usize = 64;
+}
+
+#[cfg(feature = "contract")]
+trait SdkEncode {
+    type Encoded;
+
+    fn sdk_encode(self) -> Self::Encoded;
+}
+
+#[cfg(feature = "contract")]
+impl SdkEncode for bn::Fr {
+    type Encoded = [u8; consts::SCALAR_LEN];
+
+    fn sdk_encode(self) -> Self::Encoded {
+        let (low, high) = {
+            let [low_int, high_int] = self.into_u256().0;
+            (low_int.to_le_bytes(), high_int.to_le_bytes())
+        };
+
+        let mut bytes = [0u8; consts::SCALAR_LEN];
+        bytes[0..consts::SCALAR_PART_LEN].copy_from_slice(&low);
+        bytes[consts::SCALAR_PART_LEN..consts::SCALAR_PART_LEN * 2].copy_from_slice(&high);
+        bytes
+    }
+}
+
+#[cfg(feature = "contract")]
+impl SdkEncode for bn::G1 {
+    type Encoded = [u8; consts::POINT_LEN];
+
+    fn sdk_encode(self) -> Self::Encoded {
+        bn::AffineG1::from_jacobian(self)
+            .map(|p| {
+                // It is possible to use sdk_encode for Fr here but, this is
+                // just a small optimisation to avoid additional allocations.
+                let (px, py) = (p.x(), p.y());
+                let (px_low, px_high) = {
+                    let [low_int, high_int] = px.into_u256().0;
+                    (low_int.to_le_bytes(), high_int.to_le_bytes())
+                };
+                let (py_low, py_high) = {
+                    let [low_int, high_int] = py.into_u256().0;
+                    (low_int.to_le_bytes(), high_int.to_le_bytes())
+                };
+
+                let mut bytes = [0u8; consts::POINT_LEN];
+                bytes[0..consts::SCALAR_PART_LEN].copy_from_slice(&px_low);
+                bytes[consts::SCALAR_PART_LEN..consts::SCALAR_PART_LEN * 2]
+                    .copy_from_slice(&px_high);
+                bytes[consts::SCALAR_PART_LEN * 2..consts::SCALAR_PART_LEN * 3]
+                    .copy_from_slice(&py_low);
+                bytes[consts::SCALAR_PART_LEN * 3..consts::SCALAR_PART_LEN * 4]
+                    .copy_from_slice(&py_high);
+                bytes
+            })
+            .unwrap_or_else(|| [0u8; consts::POINT_LEN])
+    }
+}
+
+#[cfg(feature = "contract")]
+impl SdkEncode for bn::G2 {
+    type Encoded = [u8; consts::POINT_PAIR_LEN];
+
+    fn sdk_encode(self) -> Self::Encoded {
+        bn::AffineG2::from_jacobian(self)
+            .map(|g2| {
+                let (x_real_low, x_real_high, x_imaginary_low, x_imaginary_high) = {
+                    let x = g2.x(); // <- copied
+                    let (x_real, x_imaginary) = (x.real(), x.imaginary()); // <- copied u256
+                    let [x_real_low, x_real_high] = x_real.into_u256().0; // <- copied u256
+                    let [x_imaginary_low, x_imaginary_high] = x_imaginary.into_u256().0; // <- copied u256
+                    (
+                        x_real_low.to_le_bytes(),
+                        x_real_high.to_le_bytes(),
+                        x_imaginary_low.to_le_bytes(),
+                        x_imaginary_high.to_le_bytes(),
+                    )
+                };
+                let (y_real_low, y_real_high, y_imaginary_low, y_imaginary_high) = {
+                    let y = g2.y(); // <- copied
+                    let (y_real, y_imaginary) = (y.real(), y.imaginary()); // <- copied
+                    let [y_real_low, y_real_high] = y_real.into_u256().0; // <- copied
+                    let [y_imaginary_low, y_imaginary_high] = y_imaginary.into_u256().0; // <- copied
+                    (
+                        y_real_low.to_le_bytes(),
+                        y_real_high.to_le_bytes(),
+                        y_imaginary_low.to_le_bytes(),
+                        y_imaginary_high.to_le_bytes(),
+                    )
+                };
+
+                let mut bytes = [0u8; consts::POINT_PAIR_LEN];
+                bytes[0..consts::SCALAR_PART_LEN].copy_from_slice(&x_real_low);
+                bytes[consts::SCALAR_PART_LEN..consts::SCALAR_PART_LEN * 2]
+                    .copy_from_slice(&x_real_high);
+                bytes[consts::SCALAR_PART_LEN * 2..consts::SCALAR_PART_LEN * 3]
+                    .copy_from_slice(&x_imaginary_low);
+                bytes[consts::SCALAR_PART_LEN * 3..consts::SCALAR_PART_LEN * 4]
+                    .copy_from_slice(&x_imaginary_high);
+                bytes[consts::SCALAR_PART_LEN * 4..consts::SCALAR_PART_LEN * 5]
+                    .copy_from_slice(&y_real_low);
+                bytes[consts::SCALAR_PART_LEN * 5..consts::SCALAR_PART_LEN * 6]
+                    .copy_from_slice(&y_real_high);
+                bytes[consts::SCALAR_PART_LEN * 6..consts::SCALAR_PART_LEN * 7]
+                    .copy_from_slice(&y_imaginary_low);
+                bytes[consts::SCALAR_PART_LEN * 7..consts::SCALAR_PART_LEN * 8]
+                    .copy_from_slice(&y_imaginary_high);
+                bytes
+            })
+            .unwrap_or_else(|| [0u8; consts::POINT_PAIR_LEN])
+    }
 }
 
 /// Reads the `x` and `y` points from an input at a given position.
 fn read_point(input: &[u8], pos: usize) -> Result<bn::G1, ExitError> {
     use bn::{AffineG1, Fq, Group, G1};
 
-    let mut px_buf = [0u8; 32];
-    px_buf.copy_from_slice(&input[pos..(pos + 32)]);
-    let px =
-        Fq::interpret(&px_buf).map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_X")))?;
-
-    let mut py_buf = [0u8; 32];
-    py_buf.copy_from_slice(&input[(pos + 32)..(pos + 64)]);
-    let py =
-        Fq::interpret(&py_buf).map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_Y")))?;
+    let px = Fq::from_slice(&input[pos..(pos + consts::SCALAR_LEN)])
+        .map_err(|_e| ExitError::Other(Borrowed("ERR_FQ_INCORRECT")))?;
+    let py = Fq::from_slice(&input[(pos + consts::SCALAR_LEN)..(pos + consts::SCALAR_LEN * 2)])
+        .map_err(|_e| ExitError::Other(Borrowed("ERR_FQ_INCORRECT")))?;
 
     Ok(if px == Fq::zero() && py == bn::Fq::zero() {
         G1::zero()
@@ -67,9 +190,9 @@ fn read_point(input: &[u8], pos: usize) -> Result<bn::G1, ExitError> {
     })
 }
 
-pub(super) struct Bn128Add<HF: HardFork>(PhantomData<HF>);
+pub(super) struct Bn256Add<HF: HardFork>(PhantomData<HF>);
 
-impl<HF: HardFork> Bn128Add<HF> {
+impl<HF: HardFork> Bn256Add<HF> {
     pub(super) const ADDRESS: Address = super::make_address(0, 6);
 
     pub fn new() -> Self {
@@ -77,47 +200,42 @@ impl<HF: HardFork> Bn128Add<HF> {
     }
 }
 
-impl<HF: HardFork> Bn128Add<HF> {
+impl<HF: HardFork> Bn256Add<HF> {
     fn run_inner(input: &[u8], _context: &Context) -> Result<Vec<u8>, ExitError> {
         let mut input = input.to_vec();
         input.resize(consts::ADD_INPUT_LEN, 0);
 
         let p1 = read_point(&input, 0)?;
-        let p2 = read_point(&input, 64)?;
+        let p2 = read_point(&input, consts::POINT_LEN)?;
 
-        #[cfg(not(feature = "contract"))]
-        let output = Self::native_impl(p1, p2);
-
-        #[cfg(feature = "contract")]
-        let output = Self::near_impl(p1, p2);
-
+        let output = Self::execute(p1, p2)?;
         Ok(output.to_vec())
     }
 
     #[cfg(not(feature = "contract"))]
-    fn native_impl(p1: bn::G1, p2: bn::G1) -> [u8; 64] {
-        let mut output = [0u8; 64];
+    fn execute(p1: bn::G1, p2: bn::G1) -> Result<[u8; consts::OUTPUT_LEN], ExitError> {
+        let mut output = [0u8; consts::POINT_LEN];
         if let Some(sum) = bn::AffineG1::from_jacobian(p1 + p2) {
-            let x = sum.x().into_u256().to_big_endian();
-            let y = sum.y().into_u256().to_big_endian();
-            output[0..32].copy_from_slice(&x);
-            output[32..64].copy_from_slice(&y);
+            sum.x()
+                .to_big_endian(&mut output[0..consts::SCALAR_LEN])
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BIG_ENDIAN")))?;
+            sum.y()
+                .to_big_endian(&mut output[consts::SCALAR_LEN..consts::SCALAR_LEN * 2])
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BIG_ENDIAN")))?;
         }
-        output
+        Ok(output)
     }
 
     #[cfg(feature = "contract")]
-    fn near_impl(p1: bn::G1, p2: bn::G1) -> [u8; 64] {
-        let p1 = bn::AffineG1::from_jacobian(p1).unwrap();
-        let p2 = bn::AffineG1::from_jacobian(p2).unwrap();
-        aurora_engine_sdk::alt_bn128_g1_sum(
-            (fq_to_u256(p1.x()), fq_to_u256(p1.y())),
-            (fq_to_u256(p2.x()), fq_to_u256(p2.y())),
-        )
+    fn execute(p1: bn::G1, p2: bn::G1) -> Result<[u8; consts::OUTPUT_LEN], ExitError> {
+        Ok(aurora_engine_sdk::alt_bn128_g1_sum(
+            p1.sdk_encode(),
+            p2.sdk_encode(),
+        ))
     }
 }
 
-impl Precompile for Bn128Add<Byzantium> {
+impl Precompile for Bn256Add<Byzantium> {
     fn required_gas(_input: &[u8]) -> Result<EthGas, ExitError> {
         Ok(costs::BYZANTIUM_ADD)
     }
@@ -146,7 +264,7 @@ impl Precompile for Bn128Add<Byzantium> {
     }
 }
 
-impl Precompile for Bn128Add<Istanbul> {
+impl Precompile for Bn256Add<Istanbul> {
     fn required_gas(_input: &[u8]) -> Result<EthGas, ExitError> {
         Ok(costs::ISTANBUL_ADD)
     }
@@ -174,9 +292,9 @@ impl Precompile for Bn128Add<Istanbul> {
     }
 }
 
-pub(super) struct Bn128Mul<HF: HardFork>(PhantomData<HF>);
+pub(super) struct Bn256Mul<HF: HardFork>(PhantomData<HF>);
 
-impl<HF: HardFork> Bn128Mul<HF> {
+impl<HF: HardFork> Bn256Mul<HF> {
     pub(super) const ADDRESS: Address = super::make_address(0, 7);
 
     pub fn new() -> Self {
@@ -184,49 +302,46 @@ impl<HF: HardFork> Bn128Mul<HF> {
     }
 }
 
-impl<HF: HardFork> Bn128Mul<HF> {
+impl<HF: HardFork> Bn256Mul<HF> {
     fn run_inner(input: &[u8], _context: &Context) -> Result<Vec<u8>, ExitError> {
         let mut input = input.to_vec();
         input.resize(consts::MUL_INPUT_LEN, 0);
 
         let p = read_point(&input, 0)?;
-        let mut fr_buf = [0u8; 32];
-        fr_buf.copy_from_slice(&input[64..96]);
-        let fr = bn::Fr::interpret(&fr_buf)
-            .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_FE")))?;
+        let fr =
+            bn::Fr::from_slice(&input[consts::POINT_LEN..consts::POINT_LEN + consts::SCALAR_LEN])
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_FR")))?;
 
-        #[cfg(not(feature = "contract"))]
-        let output = Self::native_impl(p, fr);
-
-        #[cfg(feature = "contract")]
-        let output = Self::near_impl(p, fr);
-
+        let output = Self::execute(p, fr)?;
         Ok(output.to_vec())
     }
 
     #[cfg(not(feature = "contract"))]
-    fn native_impl(p: bn::G1, fr: bn::Fr) -> [u8; 64] {
-        let mut output = [0u8; 64];
+    fn execute(p: bn::G1, fr: bn::Fr) -> Result<[u8; consts::OUTPUT_LEN], ExitError> {
+        let mut output = [0u8; consts::OUTPUT_LEN];
         if let Some(mul) = bn::AffineG1::from_jacobian(p * fr) {
-            let x = mul.x().into_u256().to_big_endian();
-            let y = mul.y().into_u256().to_big_endian();
-            output[0..32].copy_from_slice(&x);
-            output[32..64].copy_from_slice(&y);
+            mul.x()
+                .into_u256()
+                .to_big_endian(&mut output[0..consts::SCALAR_LEN])
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BIG_ENDIAN")))?;
+            mul.y()
+                .into_u256()
+                .to_big_endian(&mut output[consts::SCALAR_LEN..consts::SCALAR_LEN * 2])
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BIG_ENDIAN")))?;
         }
-        output
+        Ok(output)
     }
 
     #[cfg(feature = "contract")]
-    fn near_impl(p: bn::G1, fr: bn::Fr) -> [u8; 64] {
-        let p = bn::AffineG1::from_jacobian(p).unwrap();
-        aurora_engine_sdk::alt_bn128_g1_scalar_multiple(
-            (fq_to_u256(p.x()), fq_to_u256(p.y())),
-            crate::prelude::U256(fr.into_u256().0),
-        )
+    fn execute(g1: bn::G1, fr: bn::Fr) -> Result<[u8; consts::OUTPUT_LEN], ExitError> {
+        Ok(aurora_engine_sdk::alt_bn128_g1_scalar_multiple(
+            g1.sdk_encode(),
+            fr.sdk_encode(),
+        ))
     }
 }
 
-impl Precompile for Bn128Mul<Byzantium> {
+impl Precompile for Bn256Mul<Byzantium> {
     fn required_gas(_input: &[u8]) -> Result<EthGas, ExitError> {
         Ok(costs::BYZANTIUM_MUL)
     }
@@ -254,7 +369,7 @@ impl Precompile for Bn128Mul<Byzantium> {
     }
 }
 
-impl Precompile for Bn128Mul<Istanbul> {
+impl Precompile for Bn256Mul<Istanbul> {
     fn required_gas(_input: &[u8]) -> Result<EthGas, ExitError> {
         Ok(costs::ISTANBUL_MUL)
     }
@@ -282,9 +397,9 @@ impl Precompile for Bn128Mul<Istanbul> {
     }
 }
 
-pub(super) struct Bn128Pair<HF: HardFork>(PhantomData<HF>);
+pub(super) struct Bn256Pair<HF: HardFork>(PhantomData<HF>);
 
-impl<HF: HardFork> Bn128Pair<HF> {
+impl<HF: HardFork> Bn256Pair<HF> {
     pub(super) const ADDRESS: Address = super::make_address(0, 8);
 
     pub fn new() -> Self {
@@ -292,130 +407,93 @@ impl<HF: HardFork> Bn128Pair<HF> {
     }
 }
 
-impl<HF: HardFork> Bn128Pair<HF> {
+impl<HF: HardFork> Bn256Pair<HF> {
     fn run_inner(input: &[u8], _context: &Context) -> Result<Vec<u8>, ExitError> {
-        use bn::{arith::U256, AffineG1, AffineG2, Fq, Fq2, Group, G1, G2};
-
         if input.len() % consts::PAIR_ELEMENT_LEN != 0 {
             return Err(ExitError::Other(Borrowed("ERR_BN128_INVALID_LEN")));
         }
 
         let output = if input.is_empty() {
-            U256::one()
+            bn::arith::U256::one()
         } else {
             let elements = input.len() / consts::PAIR_ELEMENT_LEN;
             let mut vals = Vec::with_capacity(elements);
-
             for idx in 0..elements {
-                let mut buf = [0u8; 32];
+                let ax = bn::Fq::from_slice(
+                    &input[(idx * consts::PAIR_ELEMENT_LEN)
+                        ..(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN)],
+                )
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_AX")))?;
+                let ay = bn::Fq::from_slice(
+                    &input[(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN)
+                        ..(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 2)],
+                )
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_AY")))?;
+                let bay = bn::Fq::from_slice(
+                    &input[(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 2)
+                        ..(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 3)],
+                )
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_BAY")))?;
+                let bax = bn::Fq::from_slice(
+                    &input[(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 3)
+                        ..(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 4)],
+                )
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_BAX")))?;
+                let bby = bn::Fq::from_slice(
+                    &input[(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 4)
+                        ..(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 5)],
+                )
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_BBY")))?;
+                let bbx = bn::Fq::from_slice(
+                    &input[(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 5)
+                        ..(idx * consts::PAIR_ELEMENT_LEN + consts::SCALAR_LEN * 6)],
+                )
+                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_BBX")))?;
 
-                buf.copy_from_slice(
-                    &input[(idx * consts::PAIR_ELEMENT_LEN)..(idx * consts::PAIR_ELEMENT_LEN + 32)],
-                );
-                let ax = Fq::interpret(&buf)
-                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_AX")))?;
-                buf.copy_from_slice(
-                    &input[(idx * consts::PAIR_ELEMENT_LEN + 32)
-                        ..(idx * consts::PAIR_ELEMENT_LEN + 64)],
-                );
-                let ay = Fq::interpret(&buf)
-                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_AY")))?;
-                buf.copy_from_slice(
-                    &input[(idx * consts::PAIR_ELEMENT_LEN + 64)
-                        ..(idx * consts::PAIR_ELEMENT_LEN + 96)],
-                );
-                let bay = Fq::interpret(&buf)
-                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_B_AY")))?;
-                buf.copy_from_slice(
-                    &input[(idx * consts::PAIR_ELEMENT_LEN + 96)
-                        ..(idx * consts::PAIR_ELEMENT_LEN + 128)],
-                );
-                let bax = Fq::interpret(&buf)
-                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_B_AX")))?;
-                buf.copy_from_slice(
-                    &input[(idx * consts::PAIR_ELEMENT_LEN + 128)
-                        ..(idx * consts::PAIR_ELEMENT_LEN + 160)],
-                );
-                let bby = Fq::interpret(&buf)
-                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_B_BY")))?;
-                buf.copy_from_slice(
-                    &input[(idx * consts::PAIR_ELEMENT_LEN + 160)
-                        ..(idx * consts::PAIR_ELEMENT_LEN + 192)],
-                );
-                let bbx = Fq::interpret(&buf)
-                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_B_BX")))?;
+                let g1_a = bn::AffineG1::new(ax, ay)
+                    .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_A")))?
+                    .into();
+                let g1_b = {
+                    let ba = bn::Fq2::new(bax, bay);
+                    let bb = bn::Fq2::new(bbx, bby);
 
-                let a = {
-                    if ax.is_zero() && ay.is_zero() {
-                        G1::zero()
-                    } else {
-                        G1::from(
-                            AffineG1::new(ax, ay)
-                                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_A")))?,
-                        )
-                    }
+                    bn::AffineG2::new(ba, bb)
+                        .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_B")))?
+                        .into()
                 };
-                let b = {
-                    let ba = Fq2::new(bax, bay);
-                    let bb = Fq2::new(bbx, bby);
-
-                    if ba.is_zero() && bb.is_zero() {
-                        G2::zero()
-                    } else {
-                        G2::from(
-                            AffineG2::new(ba, bb)
-                                .map_err(|_e| ExitError::Other(Borrowed("ERR_BN128_INVALID_B")))?,
-                        )
-                    }
-                };
-                vals.push((a, b))
+                vals.push((g1_a, g1_b))
             }
 
-            #[cfg(feature = "contract")]
-            let result = Self::near_impl(vals);
-
-            #[cfg(not(feature = "contract"))]
-            let result = Self::native_impl(vals);
-
+            let result = Self::execute(vals);
             if result {
-                U256::one()
+                bn::arith::U256::one()
             } else {
-                U256::zero()
+                bn::arith::U256::zero()
             }
         };
 
-        Ok(output.to_big_endian().to_vec())
+        let mut res = crate::vec![0u8; 32];
+        output
+            .to_big_endian(&mut res[0..32])
+            .map_err(|_e| ExitError::Other(Borrowed("ERR_BIG_ENDIAN")))?;
+        Ok(res)
     }
 
     #[cfg(not(feature = "contract"))]
-    fn native_impl(vals: Vec<(bn::G1, bn::G2)>) -> bool {
-        let mul = vals
-            .into_iter()
-            .fold(bn::Gt::one(), |s, (a, b)| s * bn::pairing(a, b));
-
-        mul == bn::Gt::one()
+    fn execute(vals: Vec<(bn::G1, bn::G2)>) -> bool {
+        bn::pairing_batch(&vals) == bn::Gt::one()
     }
 
     #[cfg(feature = "contract")]
-    fn near_impl(vals: Vec<(bn::G1, bn::G2)>) -> bool {
-        let u256s = vals.into_iter().map(|(g1, g2)| {
-            let p = bn::AffineG1::from_jacobian(g1).unwrap();
-            let p2 = bn::AffineG2::from_jacobian(g2).unwrap();
-            let p2x = p2.x();
-            let p2y = p2.y();
-            (
-                (fq_to_u256(p.x()), fq_to_u256(p.y())),
-                (
-                    (fq_to_u256(p2x.re()), fq_to_u256(p2x.im())),
-                    (fq_to_u256(p2y.re()), fq_to_u256(p2y.im())),
-                ),
-            )
-        });
-        aurora_engine_sdk::alt_bn128_pairing(u256s)
+    fn execute(vals: Vec<(bn::G1, bn::G2)>) -> bool {
+        let points = vals
+            .into_iter()
+            .map(|(g1, g2)| (g1.sdk_encode(), g2.sdk_encode()));
+        aurora_engine_sdk::alt_bn128_pairing(points)
     }
 }
 
-impl Precompile for Bn128Pair<Byzantium> {
+impl Precompile for Bn256Pair<Byzantium> {
     fn required_gas(input: &[u8]) -> Result<EthGas, ExitError> {
         Ok(
             costs::BYZANTIUM_PAIR_PER_POINT * input.len() / consts::PAIR_ELEMENT_LEN
@@ -446,7 +524,7 @@ impl Precompile for Bn128Pair<Byzantium> {
     }
 }
 
-impl Precompile for Bn128Pair<Istanbul> {
+impl Precompile for Bn256Pair<Istanbul> {
     fn required_gas(input: &[u8]) -> Result<EthGas, ExitError> {
         Ok(
             costs::ISTANBUL_PAIR_PER_POINT * input.len() / consts::PAIR_ELEMENT_LEN
@@ -477,10 +555,6 @@ impl Precompile for Bn128Pair<Istanbul> {
     }
 }
 
-fn fq_to_u256(x: bn::Fq) -> crate::prelude::U256 {
-    crate::prelude::U256(x.into_u256().0)
-}
-
 #[cfg(test)]
 mod tests {
     use crate::utils::new_context;
@@ -504,7 +578,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Add::<Byzantium>::new()
+        let res = Bn256Add::<Byzantium>::new()
             .run(&input, Some(EthGas::new(500)), &new_context(), false)
             .unwrap()
             .output;
@@ -526,7 +600,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Add::<Byzantium>::new()
+        let res = Bn256Add::<Byzantium>::new()
             .run(&input, Some(EthGas::new(500)), &new_context(), false)
             .unwrap()
             .output;
@@ -542,7 +616,7 @@ mod tests {
         )
         .unwrap();
         let res =
-            Bn128Add::<Byzantium>::new().run(&input, Some(EthGas::new(499)), &new_context(), false);
+            Bn256Add::<Byzantium>::new().run(&input, Some(EthGas::new(499)), &new_context(), false);
         assert!(matches!(res, Err(ExitError::OutOfGas)));
 
         // no input test
@@ -554,7 +628,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Add::<Byzantium>::new()
+        let res = Bn256Add::<Byzantium>::new()
             .run(&input, Some(EthGas::new(500)), &new_context(), false)
             .unwrap()
             .output;
@@ -571,7 +645,7 @@ mod tests {
         .unwrap();
 
         let res =
-            Bn128Add::<Byzantium>::new().run(&input, Some(EthGas::new(500)), &new_context(), false);
+            Bn256Add::<Byzantium>::new().run(&input, Some(EthGas::new(500)), &new_context(), false);
         assert!(matches!(
             res,
             Err(ExitError::Other(Borrowed("ERR_BN128_INVALID_POINT")))
@@ -594,7 +668,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Mul::<Byzantium>::new()
+        let res = Bn256Mul::<Byzantium>::new()
             .run(&input, Some(EthGas::new(40_000)), &new_context(), false)
             .unwrap()
             .output;
@@ -608,7 +682,7 @@ mod tests {
             0200000000000000000000000000000000000000000000000000000000000000",
         )
         .unwrap();
-        let res = Bn128Mul::<Byzantium>::new().run(
+        let res = Bn256Mul::<Byzantium>::new().run(
             &input,
             Some(EthGas::new(39_999)),
             &new_context(),
@@ -631,7 +705,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Mul::<Byzantium>::new()
+        let res = Bn256Mul::<Byzantium>::new()
             .run(&input, Some(EthGas::new(40_000)), &new_context(), false)
             .unwrap()
             .output;
@@ -646,7 +720,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Mul::<Byzantium>::new()
+        let res = Bn256Mul::<Byzantium>::new()
             .run(&input, Some(EthGas::new(40_000)), &new_context(), false)
             .unwrap()
             .output;
@@ -661,7 +735,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Mul::<Byzantium>::new().run(
+        let res = Bn256Mul::<Byzantium>::new().run(
             &input,
             Some(EthGas::new(40_000)),
             &new_context(),
@@ -695,7 +769,7 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap();
 
-        let res = Bn128Pair::<Byzantium>::new()
+        let res = Bn256Pair::<Byzantium>::new()
             .run(&input, Some(EthGas::new(260_000)), &new_context(), false)
             .unwrap()
             .output;
@@ -718,7 +792,7 @@ mod tests {
             12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
         )
         .unwrap();
-        let res = Bn128Pair::<Byzantium>::new().run(
+        let res = Bn256Pair::<Byzantium>::new().run(
             &input,
             Some(EthGas::new(259_999)),
             &new_context(),
@@ -732,7 +806,7 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap();
 
-        let res = Bn128Pair::<Byzantium>::new()
+        let res = Bn256Pair::<Byzantium>::new()
             .run(&input, Some(EthGas::new(260_000)), &new_context(), false)
             .unwrap()
             .output;
@@ -750,7 +824,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Pair::<Byzantium>::new().run(
+        let res = Bn256Pair::<Byzantium>::new().run(
             &input,
             Some(EthGas::new(260_000)),
             &new_context(),
@@ -771,7 +845,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = Bn128Pair::<Byzantium>::new().run(
+        let res = Bn256Pair::<Byzantium>::new().run(
             &input,
             Some(EthGas::new(260_000)),
             &new_context(),
