@@ -29,15 +29,6 @@ checksum = "be4dc07131ffa69b8072d35f5007352af944213cde02545e2103680baed38fcd"
 [[package]]
 name = "aurora-bn"
 version = "0.1.0"
-source = "git+https://github.com/birchmd/aurora-bn.git?rev=0ae7099d379e53d36f1883cf0d840edf67f71e7d#0ae7099d379e53d36f1883cf0d840edf67f71e7d"
-dependencies = [
- "byteorder",
- "getrandom",
-]
-
-[[package]]
-name = "aurora-bn"
-version = "0.1.0"
 source = "git+https://github.com/aurora-is-near/aurora-bn.git#8f1743884061981cac84388862e2763b2aa09307"
 dependencies = [
  "byteorder",
@@ -48,7 +39,7 @@ dependencies = [
 name = "aurora-engine"
 version = "2.6.1"
 dependencies = [
- "aurora-bn 0.1.0 (git+https://github.com/aurora-is-near/aurora-bn.git)",
+ "aurora-bn",
  "aurora-engine-precompiles",
  "aurora-engine-sdk",
  "aurora-engine-transactions",
@@ -75,7 +66,6 @@ dependencies = [
 name = "aurora-engine-precompiles"
 version = "1.0.0"
 dependencies = [
- "aurora-bn 0.1.0 (git+https://github.com/birchmd/aurora-bn.git?rev=0ae7099d379e53d36f1883cf0d840edf67f71e7d)",
  "aurora-engine-sdk",
  "aurora-engine-types",
  "base64",
@@ -90,6 +80,7 @@ dependencies = [
  "ripemd160",
  "sha2",
  "sha3 0.9.1",
+ "zeropool-bn",
 ]
 
 [[package]]
@@ -600,6 +591,9 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+dependencies = [
+ "spin",
+]
 
 [[package]]
 name = "libc"
@@ -1027,6 +1021,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,3 +1226,16 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "zeropool-bn"
+version = "0.5.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e61de68ede9ffdd69c01664f65a178c5188b73f78faa21f0936016a888ff7c"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "lazy_static",
+ "rand",
+ "rustc-hex",
+]
