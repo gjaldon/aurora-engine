@@ -28,7 +28,7 @@ fn test_uniswap_input_multihop() {
     let mut context = UniswapTestContext::new("uniswap");
 
     // evm_gas = 970k
-    // near total gas = 163 Tgas
+    // near total gas = 122 Tgas
 
     let tokens = context.create_tokens(10, MINT_AMOUNT.into());
     for (token_a, token_b) in tokens.iter().zip(tokens.iter().skip(1)) {
@@ -38,7 +38,7 @@ fn test_uniswap_input_multihop() {
 
     let (_amount_out, _evm_gas, profile) = context.exact_input(&tokens, INPUT_AMOUNT.into());
 
-    assert_eq!(123, profile.all_gas() / 1_000_000_000_000);
+    assert_eq!(122, profile.all_gas() / 1_000_000_000_000);
 }
 
 #[test]
